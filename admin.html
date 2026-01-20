@@ -1,0 +1,239 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>球技大会データ編集（管理）</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif; margin:20px;}
+  fieldset{margin-bottom:16px; border:1px solid #ccc; border-radius:8px;}
+  legend{font-weight:700;}
+  textarea,input{width:100%;}
+  .row{display:grid; grid-template-columns: 1fr 1fr; gap:10px;}
+  .row3{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;}
+  .list{border:1px solid #ddd; border-radius:8px; padding:10px; margin:10px 0;}
+  button{padding:8px 12px; border-radius:8px; margin-right:8px;}
+  .muted{color:#666; font-size:.9rem;}
+</style>
+</head>
+<body>
+<h1>球技大会データ編集（JSON管理）</h1>
+
+<div>
+  <button id="btnLoad">サーバの data.json を読み込み</button>
+  <input type="file" id="fileLocal" accept="application/json">
+  <button id="btnDownload">JSONをダウンロード</button>
+</div>
+<p class="muted">※ 公開サーバの data.json を差し替えると本番に反映されます。</p>
+
+<form id="form">
+  <fieldset>
+    <legend>基本情報</legend>
+    <div class="row">
+      <div><label>学校名<input id="schoolName"></label></div>
+      <div><label>イベント名<input id="eventName"></label></div>
+    </div>
+    <div><label>タグライン（上部の小見出し）<input id="tagline"></label></div>
+    <div><label>ヒーロータイトル（HTML可）<textarea id="heroTitleHTML" rows="2"></textarea></label></div>
+    <div><label>ヒーローサブ（HTML可）<textarea id="heroSubHTML" rows="3"></textarea></label></div>
+    <div><label>フッター学校名<input id="footerSchool"></label></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>色設定</legend>
+    <div class="row3">
+      <div><label>ネイビー<input id="colorNavy" type="color" value="#0C2340"></label></div>
+      <div><label>ゴールド<input id="colorGold" type="color" value="#FFD84D"></label></div>
+      <div><label>ブルー<input id="colorBlue" type="color" value="#43C1F2"></label></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>お知らせ <button type="button" id="addNotice">＋追加</button></legend>
+    <div id="noticeWrap"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>スケジュール <button type="button" id="addRow">＋行追加</button></legend>
+    <div id="scheduleWrap"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>競技 <button type="button" id="addSport">＋追加</button></legend>
+    <div id="sportsWrap"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>アクセス</legend>
+    <div><label>地図HTML（iframe可）<textarea id="mapHTML" rows="3"></textarea></label></div>
+    <div class="list">
+      <strong>リスト項目</strong>（会場／持ち物／服装／注意 など）
+      <button type="button" id="addAccess">＋項目追加</button>
+      <div id="accessItems"></div>
+    </div>
+    <div><label>担当（HTML可）<input id="deptHTML"></label></div>
+    <div><label>代表メール（HTML可）<input id="contactHTML"></label></div>
+  </fieldset>
+</form>
+
+<script>
+let model = {
+  meta:{schoolName:'',eventName:'',tagline:'',heroTitleHTML:'',heroSubHTML:'',footerSchool:''},
+  colors:{navy:'#0C2340',gold:'#FFD84D',blue:'#43C1F2'},
+  notices:[], schedule:[], sports:[],
+  access:{mapHTML:'',itemsHTML:[],deptHTML:'',contactHTML:''},
+  animation:{ballCount:14,sizeMin:24,sizeMax:96,speedMin:16,speedMax:42,bobMin:8,bobMax:26}
+};
+
+const $ = sel => document.querySelector(sel);
+const wrapNotice = $('#noticeWrap');
+const wrapSchedule = $('#scheduleWrap');
+const wrapSports = $('#sportsWrap');
+const wrapAccess = $('#accessItems');
+
+function render(){
+  // 基本
+  $('#schoolName').value = model.meta.schoolName||'';
+  $('#eventName').value = model.meta.eventName||'';
+  $('#tagline').value = model.meta.tagline||'';
+  $('#heroTitleHTML').value = model.meta.heroTitleHTML||'';
+  $('#heroSubHTML').value = model.meta.heroSubHTML||'';
+  $('#footerSchool').value = model.meta.footerSchool||'';
+  $('#colorNavy').value = toHex(model.colors.navy,'#0C2340');
+  $('#colorGold').value = toHex(model.colors.gold,'#FFD84D');
+  $('#colorBlue').value = toHex(model.colors.blue,'#43C1F2');
+
+  // お知らせ
+  wrapNotice.innerHTML = '';
+  model.notices.forEach((n,i)=>{
+    const div = document.createElement('div');
+    div.className='list';
+    div.innerHTML = `
+      <div class="row">
+        <div><label>バッジ<input data-k="badge" data-i="${i}" value="${esc(n.badge)}"></label></div>
+        <div><label>日付表示<input data-k="dateText" data-i="${i}" value="${esc(n.dateText||'')}"></label></div>
+      </div>
+      <div class="row">
+        <div><label>datetime(ISO)<input data-k="datetime" data-i="${i}" value="${esc(n.datetime||'')}"></label></div>
+        <div><button type="button" data-del="notice" data-i="${i}">削除</button></div>
+      </div>
+      <div><label>タイトル（HTML）<textarea data-k="titleHTML" data-i="${i}" rows="2">${esc(n.titleHTML||'')}</textarea></label></div>
+      <div><label>本文（HTML）<textarea data-k="bodyHTML" data-i="${i}" rows="2">${esc(n.bodyHTML||'')}</textarea></label></div>
+    `;
+    wrapNotice.appendChild(div);
+  });
+
+  // スケジュール
+  wrapSchedule.innerHTML = '';
+  model.schedule.forEach((r,i)=>{
+    const div = document.createElement('div');
+    div.className='list';
+    div.innerHTML = `
+      <div class="row">
+        <div><label>時間（HTML）<input data-s="timeHTML" data-i="${i}" value="${esc(r.timeHTML||'')}"></label></div>
+        <div><label>場所（HTML）<input data-s="placeHTML" data-i="${i}" value="${esc(r.placeHTML||'')}"></label></div>
+      </div>
+      <div><label>内容（HTML）<input data-s="contentHTML" data-i="${i}" value="${esc(r.contentHTML||'')}"></label></div>
+      <div><button type="button" data-del="schedule" data-i="${i}">削除</button></div>
+    `;
+    wrapSchedule.appendChild(div);
+  });
+
+  // 競技
+  wrapSports.innerHTML = '';
+  model.sports.forEach((s,i)=>{
+    const div = document.createElement('div');
+    div.className='list';
+    div.innerHTML = `
+      <div class="row">
+        <div><label>絵文字<input data-p="emoji" data-i="${i}" value="${esc(s.emoji||'🏀')}"></label></div>
+        <div><button type="button" data-del="sport" data-i="${i}">削除</button></div>
+      </div>
+      <div><label>競技名（HTML）<input data-p="nameHTML" data-i="${i}" value="${esc(s.nameHTML||'')}"></label></div>
+      <div><label>会場（HTML）<input data-p="venueHTML" data-i="${i}" value="${esc(s.venueHTML||'')}"></label></div>
+    `;
+    wrapSports.appendChild(div);
+  });
+
+  // アクセス
+  wrapAccess.innerHTML='';
+  (model.access.itemsHTML||[]).forEach((t,i)=>{
+    const div=document.createElement('div');
+    div.className='list';
+    div.innerHTML=`
+      <div class="row">
+        <div><label>項目（HTML）<input data-a="itemsHTML" data-i="${i}" value="${esc(t||'')}"></label></div>
+        <div><button type="button" data-del="access" data-i="${i}">削除</button></div>
+      </div>`;
+    wrapAccess.appendChild(div);
+  });
+  $('#mapHTML').value = model.access.mapHTML||'';
+  $('#deptHTML').value = model.access.deptHTML||'';
+  $('#contactHTML').value = model.access.contactHTML||'';
+}
+
+function esc(s){ return (s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+function toHex(v,fb){ return /^#([0-9A-Fa-f]{6})$/.test(v||'') ? v : fb; }
+
+document.getElementById('addNotice').onclick = ()=>{ model.notices.push({badge:'INFO',titleHTML:'',dateText:'',datetime:'',bodyHTML:''}); render(); };
+document.getElementById('addRow').onclick = ()=>{ model.schedule.push({timeHTML:'00:00',contentHTML:'内容',placeHTML:'場所'}); render(); };
+document.getElementById('addSport').onclick = ()=>{ model.sports.push({emoji:'🏀',nameHTML:'新しい競技',venueHTML:'会場'}); render(); };
+document.getElementById('addAccess').onclick = ()=>{ model.access.itemsHTML.push(''); render(); };
+
+// 入力変更の双方向バインド
+document.body.addEventListener('input', e=>{
+  const t=e.target;
+  if(t.id==='schoolName') model.meta.schoolName=t.value;
+  else if(t.id==='eventName') model.meta.eventName=t.value;
+  else if(t.id==='tagline') model.meta.tagline=t.value;
+  else if(t.id==='heroTitleHTML') model.meta.heroTitleHTML=t.value;
+  else if(t.id==='heroSubHTML') model.meta.heroSubHTML=t.value;
+  else if(t.id==='footerSchool') model.meta.footerSchool=t.value;
+  else if(t.id==='colorNavy') model.colors.navy=t.value;
+  else if(t.id==='colorGold') model.colors.gold=t.value;
+  else if(t.id==='colorBlue') model.colors.blue=t.value;
+  else if(t.dataset.k){ model.notices[t.dataset.i][t.dataset.k]=t.value; }
+  else if(t.dataset.s){ model.schedule[t.dataset.i][t.dataset.s]=t.value; }
+  else if(t.dataset.p){ model.sports[t.dataset.i][t.dataset.p]=t.value; }
+  else if(t.id==='mapHTML') model.access.mapHTML=t.value;
+  else if(t.id==='deptHTML') model.access.deptHTML=t.value;
+  else if(t.id==='contactHTML') model.access.contactHTML=t.value;
+  else if(t.dataset.a==='itemsHTML'){ model.access.itemsHTML[t.dataset.i]=t.value; }
+});
+
+document.body.addEventListener('click', e=>{
+  const t=e.target;
+  if(t.dataset.del==='notice'){ model.notices.splice(+t.dataset.i,1); render(); }
+  if(t.dataset.del==='schedule'){ model.schedule.splice(+t.dataset.i,1); render(); }
+  if(t.dataset.del==='sport'){ model.sports.splice(+t.dataset.i,1); render(); }
+  if(t.dataset.del==='access'){ model.access.itemsHTML.splice(+t.dataset.i,1); render(); }
+});
+
+// data.json 読込
+document.getElementById('btnLoad').onclick = async ()=>{
+  try{
+    const res = await fetch('data.json', { cache: 'no-store' });
+    if(!res.ok) throw new Error();
+    model = await res.json(); render(); alert('data.json を読み込みました。');
+  }catch(e){ alert('data.json の読み込みに失敗しました。'); }
+};
+// ローカルJSON読込
+document.getElementById('fileLocal').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload = ()=>{ try{ model=JSON.parse(r.result); render(); alert('ローカルJSONを読み込みました。'); }catch(err){ alert('JSON形式が不正です。'); } };
+  r.readAsText(f);
+};
+// JSONダウンロード
+document.getElementById('btnDownload').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model, null, 2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='data.json';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+};
+
+render();
+</script>
+</body>
+</html>
